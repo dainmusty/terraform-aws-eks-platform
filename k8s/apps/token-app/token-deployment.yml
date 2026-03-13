@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-deployment
+  namespace: fonapp
+  labels:
+    app: frontend
+    environment: dev
+    managed-by: argocd
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: token
+  template:
+    metadata:
+      labels:
+        app: token
+        environment: dev
+        managed-by: argocd
+    spec:
+      containers:
+        - name: token
+          image: nginx:trixie-perl
+          ports:
+            - containerPort: 80

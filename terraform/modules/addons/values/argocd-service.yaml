@@ -1,0 +1,9 @@
+server:
+  service:
+    type: ClusterIP
+
+  extraArgs:
+    - --insecure
+
+  ingress:
+    enabled: false

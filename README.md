@@ -513,6 +513,111 @@ Part 4 - Configuring credentials
 # How to access your prometheus and Grafana
 12. 
 
+# working working no push apply
+name: Deploy Infrastructure
+
+on:
+  push:
+    branches:
+      - main
+      - 'feature/**'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      terraform_action:
+        description: "Select the Terraform action to perform"
+        required: true
+        type: choice
+        options:
+          - "plan"
+          - "apply"
+          - "destroy"
+
+env:
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: dev_eks_cluster
+  SONAR_PROJECT_KEY: dainmusty_microservices-k8s-project
+  SONAR_ORGANIZATION: effulgencetech
+  TF_VERSION: "1.6.6"
+  AWS_ACCOUNT_ID: 651706774390
+  ROLE_NAME: microservices-project-dev-tf-role 
+  working_directory: terraform/root-modules/env/dev
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+  packages: write
+
+jobs:
+
+  PlanInfra:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.ROLE_NAME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        working-directory: ${{ env.working_directory }}
+        run: terraform init -upgrade
+
+      - name: Terraform Plan
+        working-directory: ${{ env.working_directory }}
+        run: terraform plan -out=tfplan || true
+
+
+  DeployInfra:
+    runs-on: ubuntu-latest
+    environment: dev   # approval required by high authority
+    if: |
+      (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
+      (github.event_name == 'workflow_dispatch')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.ROLE_NAME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        working-directory: ${{ env.working_directory }}
+        run: terraform init -upgrade
+
+      - name: Terraform Apply
+        if: ${{ github.event.inputs.terraform_action == 'apply' }}
+        working-directory: ${{ env.working_directory }}
+        run: terraform apply -auto-approve
+
+      - name: Update kubeconfig for EKS
+        if: ${{ github.event.inputs.terraform_action == 'apply' }}
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ${{ env.CLUSTER_NAME }}
+
 
 
 

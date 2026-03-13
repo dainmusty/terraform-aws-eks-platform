@@ -8,10 +8,10 @@ variable "key_name" {
   type        = string
 }
 
-variable "instance_profile_name" {
-  description = "The IAM instance profile name for EC2 instances."
-  type        = string
-}
+# variable "instance_profile_name" {
+#   description = "The IAM instance profile name for EC2 instances."
+#   type        = string
+# }
 
 variable "ami_ids" {
   description = "List of AMI IDs for EC2 instances."

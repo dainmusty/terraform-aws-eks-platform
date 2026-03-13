@@ -1,0 +1,26 @@
+name: Payment App CI
+
+on:
+  push:
+    paths:
+      - "k8s/apps/payment-app/**"
+
+jobs:
+  build-and-push:
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      aws_region: us-east-1
+      aws_account_id: ${{ vars.AWS_ACCOUNT_ID }}
+      aws_role_name: microservices-project-dev-tf-role
+      ecr_repo: payment-app
+      image_name: payment-app
+
+  update-manifest:
+    needs: build-and-push
+    uses: ./.github/workflows/update-manifest.yml
+    with:
+      app_path: "k8s/apps/payment-app"
+      manifest_file: "mongo-deployment.yml"
+      container_name: "mongo:5.0"
+      new_tag: ${{ github.sha }}
+      commit_message: "Updated payment app image tag"

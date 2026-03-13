@@ -1,5 +1,5 @@
 resource "aws_security_group" "bastion_sg" {
-  name        = "${var.env}-web-sg"
+  name        = "${var.env}-bastion-sg"
   description = "Security group for ${var.env}-web"
   vpc_id      = var.vpc_id
 

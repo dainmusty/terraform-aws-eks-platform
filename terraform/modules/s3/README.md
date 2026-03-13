@@ -116,3 +116,20 @@ modules/
   iam/
     main.tf        <-- roles, policies, etc.
 Then keep aws_s3_bucket_policy inside the s3/ module alongside aws_s3_bucket.
+
+
+
+
+# will later add to try to delete all versioned objects
+resource "aws_s3_bucket_lifecycle_configuration" "log_bucket_lifecycle" {
+  bucket = aws_s3_bucket.log_bucket.id
+
+  rule {
+    id = "delete-old-versions"
+    status = "Enabled"
+
+    noncurrent_version_expiration {
+      noncurrent_days = 1
+    }
+  }
+}

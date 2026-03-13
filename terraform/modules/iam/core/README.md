@@ -165,3 +165,28 @@ resource "aws_iam_role_policy_attachment" "alb_controller_attach" {
   policy_arn = aws_iam_policy.alb_controller_policy.arn
   role       = aws_iam_role.alb_controller_irsa.name
 }
+
+
+✅ First — Terraform IAM role CAN create/manage AWS infra
+
+Your microservices-project-dev-tf-role already has:
+
+✔ EKS
+✔ EC2
+✔ IAM
+✔ Add-ons
+✔ SSM/secrets
+✔ RDS
+✔ Cloudwatch
+
+➡️ That role is perfect for provisioning — but AWS IAM cannot magically give kubectl permissions.
+
+❗ Key Truth
+
+AWS IAM access ≠ Kubernetes API access.
+
+Even if Terraform provisions the cluster, it can’t use kubectl until Kubernetes trusts it via RBAC.
+
+That trust is expressed through:
+✔ aws-auth ConfigMap
+✔ Kubernetes RBAC roles

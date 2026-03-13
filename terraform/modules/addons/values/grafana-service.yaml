@@ -1,0 +1,39 @@
+grafana:
+  serviceAccount:
+    create: false
+    name: grafana     # Refers to the existing Service Account created via IRSA
+
+  service:
+    type: ClusterIP
+
+  ingress:
+    enabled: false
+
+  admin:
+    existingSecret: ${grafana_admin_secret}
+    userKey: admin-user
+    passwordKey: admin-password
+
+  persistence:
+    enabled: true
+    storageClassName: gp2
+    accessModes:
+      - ReadWriteOnce
+    size: 5Gi
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+  grafana.ini:
+    auth.anonymous:
+      enabled: false
+    server:
+      root_url: "%(protocol)s://%(domain)s/"
+
+  serviceMonitor:
+    enabled: true

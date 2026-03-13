@@ -39,26 +39,26 @@ output "grafana_role_name" {
   value       = aws_iam_role.grafana_role.name
 }
 
-output "grafana_instance_profile_name" {
-  description = "Name of the Grafana instance profile"
-  value       = aws_iam_instance_profile.grafana_instance_profile.name
-}
+# output "grafana_instance_profile_name" {
+#   description = "Name of the Grafana instance profile"
+#   value       = aws_iam_instance_profile.grafana_instance_profile.name
+# }
 
-output "prometheus_instance_profile_name" {
-  description = "Name of the Prometheus instance profile"
-  value       = aws_iam_instance_profile.prometheus_instance_profile.name
-}
+# output "prometheus_instance_profile_name" {
+#   description = "Name of the Prometheus instance profile"
+#   value       = aws_iam_instance_profile.prometheus_instance_profile.name
+# }
 
-output "rbac_instance_profile_name" {
-  description = "Name of the rbac instance profile"
-  value       = aws_iam_instance_profile.rbac_instance_profile.name
-}
+# output "rbac_instance_profile_name" {
+#   description = "Name of the rbac instance profile"
+#   value       = aws_iam_instance_profile.rbac_instance_profile.name
+# }
 
 
 
 # Output for EKS Cluster & Node Group Roles, policies and attachments.
-output "eks_cluster_role_arn" {
-  value = aws_iam_role.eks_cluster_role.arn
+output "cluster_role_arn" {
+  value = aws_iam_role.cluster_role.arn
 }
 
 output "node_group_role_arn" {
@@ -67,7 +67,7 @@ output "node_group_role_arn" {
 }
 
 # For_each policy attachments → output as map
-output "eks_cluster_policy_attachments" {
+output "cluster_policies" {
   description = "Map of EKS cluster IAM policy attachments"
   value       = [
     for k, p in aws_iam_role_policy_attachment.eks_cluster_policies : p.policy_arn
@@ -75,7 +75,7 @@ output "eks_cluster_policy_attachments" {
 }
 
 # For_each policy attachments → output as map
-output "eks_node_policy_attachments" {
+output "eks_node_policies" {
   description = "List of policy ARNs attached to the EKS node role"
   value = [
     for k, p in aws_iam_role_policy_attachment.eks_node_policies :

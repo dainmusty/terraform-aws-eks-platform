@@ -1,0 +1,22 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "datasource": "Prometheus",
+      "type": "graph",
+      "title": "CPU Usage",
+      "targets": [
+        {
+          "expr": "sum(rate(node_cpu_seconds_total{mode!=\"idle\"}[5m])) by (instance)",
+          "legendFormat": "CPU",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "title": "CPU Dashboard",
+  "schemaVersion": 36,
+  "version": 1
+}

@@ -1,10 +1,10 @@
-resource "aws_security_group" "private_sg" {
-  name        = "${var.env}-web-sg"
-  description = "Security group for ${var.env}-web"
+resource "aws_security_group" "cluster_sg" {
+  name        = "${var.env}-cluster-sg"
+  description = "Security group for ${var.env}-cluster"
   vpc_id      = var.vpc_id
 
   dynamic "ingress" {
-    for_each = var.private_ingress_rules
+    for_each = var.ingress_rules
     content {
       description      = lookup(ingress.value, "description", null)
       from_port        = ingress.value.from_port
@@ -19,7 +19,7 @@ resource "aws_security_group" "private_sg" {
   }
 
   dynamic "egress" {
-    for_each = var.private_egress_rules
+    for_each = var.egress_rules
     content {
       description      = lookup(egress.value, "description", null)
       from_port        = egress.value.from_port
@@ -34,8 +34,8 @@ resource "aws_security_group" "private_sg" {
   }
 
   tags = merge(
-    var.private_sg_tags,
-    { Name = "${var.env}-private-sg" }
+    var.cluster_sg_tags,
+    { Name = "${var.env}-cluster-sg" }
   )
 }
 

@@ -1,0 +1,22 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "datasource": "Prometheus",
+      "type": "graph",
+      "title": "Memory Usage",
+      "targets": [
+        {
+          "expr": "node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes",
+          "legendFormat": "Memory",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "title": "Memory Dashboard",
+  "schemaVersion": 36,
+  "version": 1
+}

@@ -1,58 +1,92 @@
-# name: Bootstrap ArgoCD
+name: Bootstrap ArgoCD
 
-# on:
-#   workflow_dispatch:
-#   push:
-#     paths:
-#       - "k8s/bootstrap/**"
+on:
+  workflow_run:
+    workflows: ["Deploy Infrastructure"]
+    types:
+      - completed
 
-# jobs:
-#   bootstrap:
-#     runs-on: ubuntu-latest
+env:
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: effulgencetech
+  AWS_ACCOUNT_ID:  ${{ secrets.AWS_ACCOUNT_ID }}
+  ROLE_NAME: microservices-project-dev-tf-role
+  BOOTSTRAP_DIR: k8s/bootstrap
+  BOOTSTRAP_FILE_NAME: bootstrap-argo-apps.yml
 
-#     steps:
-#       - uses: actions/checkout@v4
+permissions:
+  id-token: write
+  contents: read
 
-#       - name: Install kubectl
-#         uses: azure/setup-kubectl@v4
+jobs:
+  bootstrap-argocd:
+    runs-on: ubuntu-latest
 
-#       - name: Configure AWS Auth
-#         uses: aws-actions/configure-aws-credentials@v4
-#         with:
-#           role-to-assume: arn:aws:iam::${{ env.ACCOUNT_ID }}:role/${{ env.ROLE_NAME }}
-#           role-session-name: GitHubActions-Terraform-Plan-${{ github.run_id }}
-#           aws-region: ${{ env.AWS_REGION }}
+    steps:
 
-#       - name: Update kubeconfig
-#         run: aws eks update-kubeconfig --name prod-eks --region ${{ env.AWS_REGION }}
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-#       - name: Apply ArgoCD Root App
-#         run: kubectl apply -f k8s/bootstrap/
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.ROLE_NAME }}
+          aws-region: ${{ env.AWS_REGION }}
 
-#       - name: Force ArgoCD Sync
-#         run: kubectl -n argocd patch app root-app -p '{"spec": {"syncPolicy": {"automated": {}}}}' --type=merge
- 
-# # #
-# #     deploy-k8s:
-# #         name: ArgoCD Sync
-# #     runs-on: ubuntu-latest
-# #     needs: terraform
+      - name: Update kubeconfig for EKS
+        run: |
+          echo "Updating kubeconfig..."
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ${{ env.CLUSTER_NAME }}
 
-# #     steps:
-# #       - uses: actions/checkout@v4
+      - name: Validate cluster connectivity
+        run: |
+          echo "Checking API availability..."
+          kubectl cluster-info
+          kubectl get nodes
 
-# #       - name: Set up Git user
-# #         run: |
-# #           git config user.name github-actions[bot]
-# #           git config user.email github-actions[bot]@users.noreply.github.com
+      - name: Deploy ArgoCD bootstrap App of Apps
+        run: |
+          echo "Applying bootstrap manifest..."
+          kubectl apply -f ${{ env.BOOTSTRAP_DIR }}/${{ env.BOOTSTRAP_FILE_NAME }}
 
-# #       - name: Pull latest before pushing
-# #         run: |
-# #           git pull --rebase origin main
+      - name: Check ArgoCD Status
+        run: |
+          echo "Checking ArgoCD pods status..."
+          kubectl get pods -n argocd || true
+          echo "Waiting for ArgoCD server to be ready..."
+          kubectl wait \
+            --for=condition=Ready pod \
+            -l app.kubernetes.io/name=argocd-server \
+            -n argocd --timeout=180s || true
 
-# #       - name: Push changes
-# #         env:
-# #           GH_PAT: ${{ secrets.GH_PAT }}
-# #         run: |
-# #           git remote set-url origin https://x-access-token:${GH_PAT}@github.com/dainmusty/gnpc-terraform-infra-k8s-web-app.git
-# #           git push origin main
+      - name: Install ArgoCD CLI
+        run: |
+          echo "Installing ArgoCD CLI..."
+          curl -sSL -o /usr/local/bin/argocd \
+            https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x /usr/local/bin/argocd
+
+      - name: ArgoCD Login (in-cluster mode)
+        run: |
+          echo "Logging into ArgoCD using cluster mode..."
+          argocd login --core
+
+      - name: Sync Bootstrap ArgoCD App
+        run: |
+          echo "Starting sync of root ArgoCD application..."
+          argocd app sync root-app || argocd app sync bootstrap-app || true
+
+      - name: Wait for Application Health
+        run: |
+          echo "Waiting for bootstrap app to be healthy..."
+          argocd app wait root-app --health --timeout 120 || \
+          argocd app wait bootstrap-app --health --timeout 120 || true
+
+      - name: Final Status Output
+        run: |
+          echo "Listing ArgoCD apps..."
+          kubectl get applications -n argocd || true
+          echo "Listing workload pods..."
+          kubectl get pods -A || true

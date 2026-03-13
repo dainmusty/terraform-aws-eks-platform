@@ -1,0 +1,49 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "datasource": "Prometheus",
+      "type": "graph",
+      "title": "CPU Usage",
+      "gridPos": {"x":0,"y":0,"w":12,"h":8},
+      "targets": [
+        {
+          "expr": "sum(rate(node_cpu_seconds_total{mode!=\"idle\"}[5m])) by (instance)",
+          "legendFormat": "CPU",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "type": "graph",
+      "title": "Memory Usage",
+      "gridPos": {"x":12,"y":0,"w":12,"h":8},
+      "targets": [
+        {
+          "expr": "node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes",
+          "legendFormat": "Memory",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "type": "graph",
+      "title": "Pods Running",
+      "gridPos": {"x":0,"y":8,"w":24,"h":8},
+      "targets": [
+        {
+          "expr": "kube_pod_status_phase{phase=\"Running\"}",
+          "legendFormat": "Pods Running",
+          "refId": "C"
+        }
+      ]
+    }
+  ],
+  "title": "Cluster Overview",
+  "schemaVersion": 36,
+  "version": 1
+}

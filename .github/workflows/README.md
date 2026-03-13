@@ -26,6 +26,18 @@ k8s/
       web/
       payment/
 
+OPTIONAL NEXT IMPROVEMENTS bootstrap argocd
+
+We can add:
+
+🔹 Automatic cluster drift detection
+
+ArgoCD CLI + notification when apps are OutOfSync
+
+🔹 Slack / MS Teams notification on rollout
+🔹 Auto-create ArgoCD Projects per environment
+🔹 Add SOPS / Sealed Secrets auto-sync
+
 
 FINAL BEST PRACTICE WORKFLOW MODEL
 
@@ -597,3 +609,268 @@ Argo will:
 ✔ You copy Argo admin password
 ✔ Login to ArgoCD UI
 ✔ See all apps synced
+
+
+Meaning of @main
+
+In GitHub Actions, when you call a reusable workflow:
+
+uses: org/repo/.github/workflows/docker-reusable.yml@main
+
+
+👉 @main tells GitHub which version (branch, tag, or commit) of that workflow file to use.
+
+It works exactly like this:
+
+@main → use the file from the main branch
+
+@v1 → use a release tag
+
+@a1b2c3d → use a specific commit SHA
+
+So GitHub downloads the workflow file from that branch/tag and executes it.
+
+🔍 Why do we normally use @main?
+
+Because your reusable workflow sits in the repo’s default branch (usually main).
+
+Any time you update that reusable file on main, callers automatically get the latest version — unless they hard-pin versions (which is safer for production).
+
+🔁 What are safer alternatives?
+
+For stability (especially production CI/CD), it’s better to reference:
+
+✔ A git tag
+✔ Or a specific commit SHA
+
+Example using tag:
+
+uses: org/repo/.github/workflows/docker-reusable.yml@v1.0.0
+
+
+This ensures:
+
+pipelines don’t break unexpectedly
+
+upgrades happen intentionally, via version bump
+
+🔹 Summary
+Syntax	Meaning
+@main	Pull reusable workflow file from the main branch
+@v1	Pull from a tagged version
+@commitSHA	Locked to one version
+
+So @main is simply the version pointer of the reusable workflow you’re importing.
+
+
+Code + Dockerfile → Build → Image → Deploy
+
+auto-merge PR on approval
+✨ ChatOps approval with Slack
+✨ support Helm values.yaml update
+✨ multi-service update per PR
+
+If you want next:
+
+🔥 automatic PR reviewers
+🔥 link PR to Jira
+🔥 auto-close PR if deployment fails
+🔥 ability to batch multiple image updates into PR
+
+
+# how the web-app-ci.yml workflow is triggered
+Great setup 👍 — what you’ve built is actually a clean, realistic GitOps + CI/CD workflow chain.
+The confusion you’re hitting is very common, so let’s break it down very clearly and practically.
+
+Big Picture: What triggers what?
+
+You currently have two types of workflows:
+
+🟢 Standalone (entry-point) workflows
+
+These are workflows that start on their own.
+
+deploy-infra-terraform.yml ✅
+
+bootstrap-argocd.yml ✅
+
+web-app-ci.yml ⬅️ this is also an entry-point
+
+🔁 Reusable workflows
+
+These CANNOT run by themselves.
+
+docker-build.yml
+
+update-manifest.yml
+
+Reusable workflows are like functions — they only run when another workflow calls them via uses:.
+
+1️⃣ How do I trigger docker-build.yml?
+
+You don’t trigger it directly.
+It is already triggered when web-app-ci.yml runs:
+
+jobs:
+  build-and-push:
+    uses: ./.github/workflows/docker-build.yml
+
+
+✅ That means:
+
+Whenever web-app-ci.yml runs
+
+→ docker-build.yml is executed automatically
+
+There is no button, no push, no manual trigger for this file.
+
+2️⃣ How do I trigger update-manifest.yml?
+
+Same idea: you never trigger it directly.
+
+It runs only when:
+
+jobs:
+  update-manifest:
+    needs: build-and-push
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true'
+    uses: ./.github/workflows/update-manifest.yml
+
+
+So it runs only if ALL are true:
+
+web-app-ci.yml was started manually
+
+You selected deploy = true
+
+docker-build.yml succeeded
+
+3️⃣ How do I trigger web-app-ci.yml? (THIS is the key)
+
+You have two ways.
+
+✅ Option A: Push-based trigger (automatic CI)
+on:
+  push:
+    paths:
+      - "k8s/apps/web-app/**"
+
+
+📌 This triggers when you:
+
+git add k8s/apps/web-app
+git commit -m "Update web app config"
+git push
+
+
+What happens:
+
+Push → web-app-ci.yml
+      → docker-build.yml
+      → (NO manifest update)
+
+
+Because:
+
+workflow_dispatch was NOT used
+
+deploy input does not exist
+
+update-manifest job is skipped
+
+✅ This is pure CI (build + scan + push image)
+
+✅ Option B: Manual trigger (CI + GitOps deploy)
+
+This is the full pipeline.
+
+Steps in GitHub UI
+
+Go to Actions
+
+Click Web App CI
+
+Click Run workflow
+
+Choose:
+
+deploy = true
+
+
+Click Run
+
+What happens:
+
+Manual Run → docker-build.yml
+           → update-manifest.yml
+           → PR created
+           → ArgoCD syncs after merge
+
+
+🔥 This is proper GitOps.
+
+4️⃣ Execution Flow (End-to-End)
+🟦 CI only (push-based)
+Push to k8s/apps/web-app/*
+→ web-app-ci.yml
+  → docker-build.yml
+  → Image pushed to ECR
+
+🟩 CI + GitOps deploy (manual)
+Manual Run (deploy=true)
+→ docker-build.yml
+→ update-manifest.yml
+→ Pull Request
+→ Merge PR
+→ ArgoCD syncs to cluster
+
+5️⃣ Why this design is GOOD (you did this right)
+
+✔ Reusable workflows = DRY
+✔ Manual deploy gate = SAFE
+✔ PR-based manifest update = GitOps best practice
+✔ ArgoCD remains source-of-truth
+✔ No direct cluster access from CI
+
+This is exactly how production pipelines are built.
+
+6️⃣ Common Mistake (you avoided it)
+
+❌ Trying to trigger reusable workflows directly
+❌ Letting CI auto-deploy on every push
+❌ Editing manifests inside the same job that builds images
+
+You avoided all three 👏
+
+7️⃣ One Optional Improvement (FYI)
+
+You might later want:
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "k8s/apps/web-app/**"
+
+
+So feature branches don’t trigger builds — but that’s optional.
+
+Final Summary
+Workflow	How it runs
+deploy-infra-terraform.yml	Push / manual
+bootstrap-argocd.yml	After infra
+web-app-ci.yml	Push OR Manual
+docker-build.yml	Only via web-app-ci.yml
+update-manifest.yml	Only via web-app-ci.yml (manual + deploy=true)
+
+# will add these later
+
+environment protection rules
+
+promotion (dev → staging → prod)
+
+Wire Slack notifications
+
+  image tag immutability / rollback strategy

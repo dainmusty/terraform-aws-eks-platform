@@ -1,0 +1,44 @@
+name: Web App CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "k8s/apps/web-app/**"
+
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Deploy the new image to the cluster?"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+jobs:
+  build-and-push:
+    uses: ./.github/workflows/docker-build.yml
+    secrets: inherit
+    with:
+      aws_region: us-east-1
+      aws_account_id: ${{ vars.AWS_ACCOUNT_ID }}
+      aws_role_name: microservices-project-dev-tf-role
+      ecr_repo: tankofm-web
+      image_name: dainmusty/effulgencetech-nodejs-img   # repo only
+      image_tag: latest                         # optional tag from Docker Hub
+      dockerfile_path: ""                     # empty → pull from Docker Hub; set path to build
+
+  update-manifest:
+    needs: build-and-push
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true'
+    uses: ./.github/workflows/update-manifest.yml
+    secrets: inherit
+    with:
+      app_path: "k8s/apps/web-app"
+      manifest_file: "web-deployment.yml"
+      container_name: "dainmusty/effulgencetech-nodejs-img"
+      new_tag: ${{ github.sha }}
+      commit_message: "Updated web app image tag"

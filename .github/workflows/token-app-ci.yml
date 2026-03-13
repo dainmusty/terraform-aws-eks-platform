@@ -1,0 +1,39 @@
+name: Token App CI
+
+on:
+  push:
+    paths:
+      - "k8s/apps/token-app/**"
+
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Deploy the new image to the cluster?"
+        required: true
+        default: "false"    # If later token-app does require auto deploy,you just flip: default to "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+jobs:
+
+  build-and-push:
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      aws_region: us-east-1
+      aws_account_id: ${{ vars.AWS_ACCOUNT_ID }}
+      aws_role_name: microservices-project-dev-tf-role
+      ecr_repo: token-app
+      image_name: effulgencetech-nodejs-img
+
+  maybe-deploy:                               # Token has a conditional deployment job, update-manifest is manually triggered if need be
+    needs: build-and-push
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true'
+    uses: ./.github/workflows/update-manifest.yml
+    with:
+      app_path: "k8s/apps/token-app"
+      manifest_file: "token-deployment.yml"
+      container_name: "effulgencetech-nodejs-img"
+      new_tag: ${{ github.sha }}
+      commit_message: "Updated token app image tag"

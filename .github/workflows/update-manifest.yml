@@ -1,0 +1,98 @@
+name: Reusable Manifest Update Workflow (PR-driven GitOps)
+
+on:
+  workflow_call:
+    inputs:
+      app_path:
+        required: true
+        type: string
+
+      manifest_file:
+        required: true
+        type: string
+
+      container_name:
+        required: true
+        type: string
+
+      new_tag:
+        required: true
+        type: string
+
+      commit_message:
+        required: false
+        default: "Update image tag via GitOps"
+        type: string
+
+      git_user:
+        required: false
+        default: "github-actions"
+        type: string
+
+      git_email:
+        required: false
+        default: "ci-bot@github.com"
+        type: string
+
+      pr_base_branch:
+        required: false
+        default: "main"
+        type: string
+
+jobs:
+  update-manifest-pr:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create update branch
+        run: |
+          BRANCH="update-tag-${{ inputs.container_name }}-${{ inputs.new_tag }}"
+          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
+          git checkout -b "$BRANCH"
+
+      - name: Update manifest image tag
+        run: |
+          FILE="${{ inputs.app_path }}/${{ inputs.manifest_file }}"
+          APP="${{ inputs.container_name }}"
+          TAG="${{ inputs.new_tag }}"
+
+          echo "Updating $FILE..."
+          sed -i "s|\(image:.*${APP}.*:\).*|\1${TAG}|" "$FILE"
+
+          echo "Updated manifest:"
+          cat "$FILE"
+
+      - name: Configure git identity
+        run: |
+          git config user.name "${{ inputs.git_user }}"
+          git config user.email "${{ inputs.git_email }}"
+
+      - name: Commit manifest changes
+        run: |
+          git add ${{ inputs.app_path }}/${{ inputs.manifest_file }}
+          git commit -m "${{ inputs.commit_message }} (${APP}:${{ inputs.new_tag }})" || echo "No changes to commit"
+
+      - name: Push branch
+        run: |
+          git push origin "$BRANCH"
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ env.BRANCH }}
+          base: ${{ inputs.pr_base_branch }}
+          title: "Update image tag → ${{ inputs.new_tag }}"
+          body: |
+            Automated manifest update PR.
+
+            🔹 Image: **${{ inputs.container_name }}**
+            🔹 New tag: **${{ inputs.new_tag }}**
+
+            Review and merge to apply GitOps changes.
+          labels: automated, gitops

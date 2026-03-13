@@ -14,7 +14,7 @@ variable "description" {
   default     = "web security group"
 }
 
-variable "private_ingress_rules" {
+variable "ingress_rules" {
   type = list(object({
     from_port                = number
     to_port                  = number
@@ -26,7 +26,7 @@ variable "private_ingress_rules" {
   default = []
 }
 
-variable "private_egress_rules" {
+variable "egress_rules" {
   type = list(object({
     from_port   = number
     to_port     = number
@@ -37,8 +37,8 @@ variable "private_egress_rules" {
   default = []
 }
 
-variable "private_sg_tags" {
-  description = "Additional tags for the private security group"
+variable "cluster_sg_tags" {
+  description = "Additional tags for the cluster security group"
   type        = map(string)
   default     = {}
   
