@@ -1,17 +1,19 @@
 provider "aws" {
-  region  = "us-east-1"
+  region = "us-east-1"
+  #profile = "default"
 
 }
 
-# Data source to fetch the EKS cluster details
-data "aws_eks_cluster" "eks" {
-  name = var.cluster_name
+# Needed for ACM certs with CloudFront 
+provider "aws" {
+  alias  = "useast1"
+  region = "us-east-1"
 }
 
 
 provider "kubernetes" {
-  host                   = data.aws_eks_cluster.eks.endpoint
-  cluster_ca_certificate = base64decode(data.aws_eks_cluster.eks.certificate_authority[0].data)
+  host                   = module.eks.cluster_endpoint
+  cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
 
   exec {
     api_version = "client.authentication.k8s.io/v1beta1"
@@ -19,18 +21,16 @@ provider "kubernetes" {
     args = [
       "eks",
       "get-token",
-      "--cluster-name",
-      var.cluster_name,
-      "--region",
-      var.region
+      "--cluster-name", module.eks.cluster_name,
+      "--region", var.aws_region
     ]
   }
 }
 
 provider "helm" {
   kubernetes {
-    host                   = data.aws_eks_cluster.eks.endpoint
-    cluster_ca_certificate = base64decode(data.aws_eks_cluster.eks.certificate_authority[0].data)
+    host                   = module.eks.cluster_endpoint
+    cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
 
     exec {
       api_version = "client.authentication.k8s.io/v1beta1"
@@ -38,10 +38,8 @@ provider "helm" {
       args = [
         "eks",
         "get-token",
-        "--cluster-name",
-        var.cluster_name,
-        "--region",
-        var.region
+        "--cluster-name", module.eks.cluster_name,
+        "--region", var.aws_region
       ]
     }
   }

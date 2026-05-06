@@ -1,329 +1,192 @@
-Repo Structure for ArgoCD
-gnpc-terraform-infra-k8s-web-app/
+# Smooth teardown of terraform resources
+how can i setup my terraform to delete all resources without any errors like the one below so that it can delete smoothly automatically so that i don't have to type terraform destroy again?
+
+│ Warning: Helm uninstall returned an information message
 │
-├── .github/
-│   └── workflows/
-│       └── ci.yaml                  # GitHub Actions workflow
+│ These resources were kept due to the resource policy:
+│ [CustomResourceDefinition] applications.argoproj.io
+│ [CustomResourceDefinition] applicationsets.argoproj.io
+│ [CustomResourceDefinition] appprojects.argoproj.io
 │
-├── k8s/
-│   ├── fonapp/                      # This is the path ArgoCD needs to see
-│   │   ├── frontend.yml             # Frontend deployment + service
-│   │   ├── backend.yml              # Backend deployment + service
-│   │   └── ingress.yml              # Ingress definition
+╵
+╷
+│ Error: uninstallation completed with 1 error(s): context deadline exceeded
 │
-│   └── dev/
-│       └── fonapp-argocd-app.yaml   # ArgoCD Application YAML (declares the app)
 │
-├── terraform/
-│   └── ...                          # Your infra code if any
+╵
+╷
+│ Error: context deadline exceeded
 │
-├── README.md
-└── other files...
 
-# Terraform essential commands and notes
-terraform init
+Great question — this is a very common (and solvable) Terraform + Helm teardown problem. You’re hitting expected Helm behavior, not a Terraform bug.
 
-terraform plan
+I’ll explain why this happens, then give you a clean, production-safe teardown design so terraform destroy works once, end-to-end, without reruns.
 
-terraform apply --auto-approve
+Why your destroy is failing (what’s really happening)
 
-terraform destroy --auto-approve
+You’re seeing:
 
-terraform reconfigure
-# 📘 Production-Ready Grafana & Prometheus Setup with Secure Secrets and Alerting
+These resources were kept due to the resource policy:
+[CustomResourceDefinition] applications.argoproj.io
+...
+Error: context deadline exceeded
 
-This document outlines the modular setup and best practices applied in configuring Grafana and Prometheus using Terraform, Helm, and Kubernetes for a secure and maintainable observability stack.
 
----
+This happens because:
 
-## 🟩 1. `grafana-admin` Secret Handling Module
+1️⃣ Helm charts (Argo CD, Prometheus, ALB Controller) install CRDs
 
-### ✅ Before
-- Used an `initContainer` with `amazonlinux` and `aws-cli` to fetch secrets at runtime.
-- Embedded IAM dependencies and runtime logic, increasing security risks.
+CRDs are cluster-scoped
 
-### ✅ Now (Best Practice)
-- Terraform reads secrets from AWS Secrets Manager.
-- Creates a Kubernetes `Secret` (`grafana-admin`) with keys: `admin-user`, `admin-password`.
-- Helm references the secret using `admin.existingSecret`.
+Many charts mark them with:
 
-```yaml
-grafana:
-  admin:
-    existingSecret: grafana-admin
-```
+helm.sh/resource-policy: keep
 
-### ✅ Benefits
-- 🔐 Secure: No AWS CLI or IAM dependency inside the pod.
-- 🧹 Simplified deployment with fewer runtime risks.
-- 📦 Helm-standard way of injecting secrets.
 
----
+Helm refuses to delete them on uninstall
 
-## 🟨 2. Alertmanager Slack Notification Module
+2️⃣ Terraform waits for Helm → Helm waits for Kubernetes → deadlock
 
-### ✅ Improvements
-- Terraform reads the Slack webhook from AWS Secrets Manager:
-```hcl
-data "aws_secretsmanager_secret_version" "slack_webhook" {
-  secret_id = var.slack_webhook_secret_id
+Helm waits for cleanup that will never happen
+
+Terraform hits timeout → context deadline exceeded
+
+Destroy stops halfway
+
+This is normal Helm behavior unless you design around it.
+
+The correct solution (what professionals do)
+
+You need three explicit design rules:
+
+✅ Rule 1 — Manage CRDs OUTSIDE Helm
+
+Helm should never own CRDs if you want clean destroys.
+
+Do this instead:
+
+Install CRDs once
+
+Manage them via:
+
+Terraform kubernetes_manifest
+
+Or raw YAML
+
+Or a separate Helm release with skip_crds = false (advanced)
+
+Example (recommended)
+resource "kubernetes_manifest" "argocd_crds" {
+  for_each = fileset("${path.module}/crds/argocd", "*.yaml")
+  manifest = yamldecode(file("${path.module}/crds/argocd/${each.value}"))
 }
-```
 
-- Creates a Kubernetes Secret for Alertmanager with the correct key `slack_api_url`.
 
-### ✅ Benefits
-- 📫 Reliable Slack alerting.
-- 🔒 Secure handling of secrets at deploy time, not runtime.
+Then in Helm:
 
----
+resource "helm_release" "argocd" {
+  name       = "argocd"
+  repository = "https://argoproj.github.io/argo-helm"
+  chart      = "argo-cd"
 
-## 🟦 3. Grafana Helm Release Module
+  skip_crds = true   # 🔑 critical
+}
 
-### ✅ Enhancements
-```yaml
-grafana:
-  serviceAccount:
-    create: false
-    name: grafana
 
-  service:
-    type: LoadBalancer
+✅ Helm installs apps
+✅ Terraform controls CRDs
+✅ Destroy works cleanly
 
-  admin:
-    existingSecret: grafana-admin
+✅ Rule 2 — Increase Helm destroy timeouts (mandatory)
 
-  grafana.ini:
-    auth.anonymous:
-      enabled: false
+Some controllers take minutes to shut down.
 
-  serviceMonitor:
-    enabled: true
-```
+resource "helm_release" "argocd" {
+  name = "argocd"
 
-### ✅ Benefits
-- 🔐 Authentication enforced.
-- 📡 Metrics available to Prometheus.
-- 📊 Better production readiness.
+  timeout         = 900
+  wait            = true
+  cleanup_on_fail = true
+  atomic          = true
+}
 
----
 
-## 🟧 4. Kubernetes Resource Requests Module
+Do this for:
 
-```yaml
-resources:
-  limits:
-    cpu: 500m
-    memory: 512Mi
-  requests:
-    cpu: 250m
-    memory: 256Mi
-```
+Argo CD
 
-### ✅ Why it Matters
-- 🚦 Ensures stability and fair resource usage in Kubernetes.
+kube-prometheus-stack
 
----
+AWS Load Balancer Controller
 
-## 🟥 5. Persistence Volume Module
+✅ Rule 3 — Explicit destroy order (this matters)
 
-```yaml
-persistence:
-  enabled: true
-  storageClassName: gp2
-  size: 5Gi
-```
+Controllers must die before:
 
-### ✅ Benefits
-- 💾 Dashboards and configurations survive restarts.
-- 🧠 Stateful Grafana setup.
+Namespaces
 
----
+RBAC
 
-## 🟪 6. Optional Enhancements
+Cluster
 
-| Enhancement                      | Purpose                                 | Benefit                         |
-|----------------------------------|-----------------------------------------|----------------------------------|
-| Make admin username configurable | Pull from secret instead of hardcoding | Reusable across environments    |
-| Add disk, pod, RDS alerts        | Extend Prometheus alert coverage       | Full observability              |
-| Add pre-built dashboards         | Automatically load dashboards          | Fast operational insights       |
+Pattern to use
+module "addons" {
+  source = "../addons"
 
----
-
-## 🧠 Summary
-
-✅ Secure Secrets (Grafana + Alertmanager)  
-✅ Best Practice Helm Usage (`existingSecret`)  
-✅ Scalable, Production-Ready Config  
-✅ Minimal Runtime Dependencies
-
-## 📘 Additional Operational Notes
-
-### 🏗️ Terraform Workflow (Two-Phase)
-**Phase 1: Cluster Only**
-```bash
-terraform plan -target=module.eks.aws_cloudformation_stack.eks_cluster_stack
-terraform apply -target=module.eks.aws_cloudformation_stack.eks_cluster_stack --auto-approve
-aws eks update-kubeconfig --region us-east-1 --name effulgencetech-dev
-```
-
-**Phase 2: All Resources**
-```bash
-terraform apply --auto-approve
-```
-
-**Delete Resources**
-```bash
-terraform destroy --auto-approve
-terraform destroy -target=module.iam --auto-approve
-```
-
-**Testing Cluster Access**
-```bash
-aws eks update-kubeconfig --region us-east-1 --name effulgencetech-dev
-```
-
----
-
-### 🚀 ArgoCD Access and Management
-
-**Check ArgoCD Pods**
-```bash
-kubectl get pods -n argocd
-```
-
-**Port-forward for Local Access**
-```bash
-kubectl port-forward svc/argocd-server -n argocd 8080:80
-```
-
-**Expose ArgoCD via ALB**
-```bash
-kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
-kubectl expose deployment argocd-server --type=LoadBalancer --name=argocd-server --port=80 --target-port=8080 -n argocd
-kubectl get ingress -n argocd
-```
-
-**Initial Admin Password**
-```bash
-kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
-```
-
----
-
-### 📊 Grafana & Prometheus Access
-
-**Port-forward Grafana**
-```bash
-kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
-```
-
-**Port-forward Prometheus**
-```bash
-kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 9090
-```
-
-**Grafana Troubleshooting**
-```bash
-kubectl get pods -n monitoring
-kubectl get svc -n monitoring
-kubectl get secret grafana-admin -n monitoring -o yaml
-helm get all kube-prometheus-stack -n monitoring
-```
-
----
-
-### ⚙️ AWS Load Balancer Controller IRSA Example
-IAM trust policy:
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/<OIDC_ID>"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "oidc.eks.us-east-1.amazonaws.com/id/<OIDC_ID>:sub": "system:serviceaccount:kube-system:alb_controller",
-          "oidc.eks.us-east-1.amazonaws.com/id/<OIDC_ID>:aud": "sts.amazonaws.com"
-        }
-      }
-    }
+  depends_on = [
+    module.eks_access,   # IAM auth first
+    kubernetes_cluster_role_binding_v1.admin
   ]
 }
-```
 
----
 
-### 📦 TFLint Best Practices
+Inside addons:
 
-**Install TFLint**
-```bash
-# Linux
-curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
-
-# macOS
-brew install tflint
-
-# Windows
-choco install tflint
-```
-
-**Enable AWS Plugin**
-`.tflint.hcl`:
-```hcl
-plugin "aws" {
-  enabled = true
-  version = "0.39.0"
-  source  = "github.com/terraform-linters/tflint-ruleset-aws"
+resource "helm_release" "argocd" {
+  depends_on = [
+    kubernetes_namespace_v1.argocd
+  ]
 }
-```
-Then run:
-```bash
-tflint --init
-```
-
----
-
-### 🔐 IAM Principal Use Cases
-
-| Value                          | Use Case                         |
-|-------------------------------|----------------------------------|
-| ["ec2.amazonaws.com"]         | Standard EKS worker nodes        |
-| ["ssm.amazonaws.com"]         | SSM-managed nodes                |
-| ["eks.amazonaws.com"]         | EKS service (rare)               |
-| ["ec2.amazonaws.com", ...]    | Advanced multi-service scenarios |
-
-**Permissions Boundary**
-- `null` = No permission boundary
-- `"arn:..."` = Explicitly applied boundary
-
----
-
-### ❗ Terraform Variable Errors and Best Practices
-
-**Common Error**
-```text
-Error: The root module input variable "region"/"cluster_name" is not set
-```
-
-**Root Cause**
-- Declaring variables in child modules doesn't propagate values to the root.
-- You must define or pass these variables explicitly in the root module.
-
-**Solution Options**
-1. Set default values in `variables.tf` in the root module.
-2. Pass variables with `-var` or a `.tfvars` file.
-3. Use `terraform.tfvars` or `main.tf` to supply inputs.
-
-**Best Practice for providers.tf**
-- Should be in the **root module**.
-- Child modules should not define providers, unless they need different configurations.
-
----
 
 
+Terraform will now destroy in reverse order safely.
 
+OPTIONAL but highly recommended safeguards
+🧹 Auto-clean namespaces on destroy
+resource "kubernetes_namespace_v1" "argocd" {
+  metadata {
+    name = "argocd"
+  }
+
+  lifecycle {
+    prevent_destroy = false
+  }
+}
+
+🧹 Ignore Helm CRD leftovers (last-resort safety net)
+resource "helm_release" "argocd" {
+  lifecycle {
+    ignore_changes = [
+      metadata[0].annotations["helm.sh/resource-policy"]
+    ]
+  }
+}
+
+What NOT to do ❌
+
+❌ Rely on Helm to clean CRDs
+❌ Use terraform destroy -target regularly
+❌ Manually delete CRDs after every destroy
+❌ Mix EKS access bootstrap with addon lifecycle
+
+The clean teardown flow you want
+terraform destroy
+ ├─ helm_release addons (wait + timeout)
+ ├─ kubernetes namespaces
+ ├─ RBAC
+ ├─ EKS access entries
+ ├─ Node groups
+ └─ EKS cluster
+
+
+One command. No retries. No force. No panic.
