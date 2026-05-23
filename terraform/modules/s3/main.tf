@@ -4,7 +4,7 @@ resource "aws_s3_bucket" "log_bucket" {
   force_destroy = true
   
   tags = {
-    Name        = "${var.ResourcePrefix}-s3-log-bucket"
+    Name        = "${var.resource_prefix}-s3-log-bucket"
 
   }
 }
@@ -22,7 +22,7 @@ resource "aws_s3_bucket" "operations_bucket" {
   bucket = var.operations_bucket_name
   force_destroy = true
   tags = {
-    Name        = "${var.ResourcePrefix}-s3-bucket"
+    Name        = "${var.resource_prefix}-s3-bucket"
 
   }
 }
@@ -49,7 +49,7 @@ resource "aws_s3_bucket" "replication_bucket" {
   bucket = var.replication_bucket_name
   force_destroy = true
   tags = {
-    Name        = "${var.ResourcePrefix}-s3-replication-destination"
+    Name        = "${var.resource_prefix}-s3-replication-destination"
   }
 }
 

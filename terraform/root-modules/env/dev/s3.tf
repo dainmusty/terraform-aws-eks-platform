@@ -14,10 +14,10 @@ module "s3" {
 
   # Logging Prefix
   logging_prefix = "logs/"
-  ResourcePrefix = "Dev-Enterprise"
+  resource_prefix = "dev-enterprise"
 
   tags = {
     Environment = "dev"
-    Project     = "GNPC"
+    Project     = "gnpc"
   }
 }

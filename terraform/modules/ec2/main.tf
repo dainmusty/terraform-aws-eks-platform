@@ -46,7 +46,7 @@ resource "aws_instance" "public" {
 
   tags = merge(
     {
-      Name = "${var.ResourcePrefix}-public-${each.key}"
+      Name = "${var.resource_prefix}-public-${each.key}"
     },
     each.value.additional_tags
   )
@@ -76,7 +76,7 @@ resource "aws_instance" "private" {
 
   tags = merge(
     {
-      Name = "${var.ResourcePrefix}-private-${each.key}"
+      Name = "${var.resource_prefix}-private-${each.key}"
     },
     each.value.additional_tags
   )

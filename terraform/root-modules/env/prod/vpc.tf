@@ -3,7 +3,7 @@ module "vpc" {
 
 
   vpc_cidr             = "10.1.0.0/16"
-  ResourcePrefix       = "GNPC-Dev"
+  resource_prefix      = "gnpc-prod"
   enable_dns_hostnames = true
   enable_dns_support   = true
   instance_tenancy     = "default"
@@ -11,13 +11,13 @@ module "vpc" {
   private_subnet_cidr  = ["10.1.3.0/24", "10.1.4.0/24"]
   availability_zones   = ["us-east-1a", "us-east-1b"]
   public_ip_on_launch  = true
-  PublicRT_cidr        = "0.0.0.0/0"
+  public_rt_cidr       = "0.0.0.0/0"
   cluster_name         = "effulgencetech-dev"
-  PrivateRT_cidr       = "0.0.0.0/0"
+  private_rt_cidr      = "0.0.0.0/0"
 
   tags = {
-    Environment = "Dev"
-    Project     = "Startup"
+    Environment = "prod"
+    Project     = "startup"
   }
   # 🔽 Flow logs config
   enable_flow_logs           = true # Enable VPC flow logs

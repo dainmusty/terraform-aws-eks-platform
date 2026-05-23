@@ -6,20 +6,20 @@ resource "aws_vpc" "vpc" {
   instance_tenancy     = var.instance_tenancy
 
   tags = {
-    Name = "${var.ResourcePrefix}-vpc"
+    Name = "${var.resource_prefix}-vpc"
   }
 }
  
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.vpc.id
   tags = {
-    Name = "${var.ResourcePrefix}-IGW"
+    Name = "${var.resource_prefix}-igw"
   }
 }
 
 # Public Subnets (used for load balancers)
 resource "aws_subnet" "public_subnet" {
-  for_each = { for idx, cidr in var.public_subnet_cidr : idx => cidr }
+  for_each = { for idx, cidr in var.public_subnet_cidrs : idx => cidr }
 
   vpc_id                  = aws_vpc.vpc.id
   cidr_block              = each.value
@@ -27,7 +27,7 @@ resource "aws_subnet" "public_subnet" {
   map_public_ip_on_launch = var.public_ip_on_launch
 
   tags = {
-    Name                                      = "${var.ResourcePrefix}-Public-Subnet-${each.key + 1}"
+    Name                                      = "${var.resource_prefix}-public-subnet-${each.key + 1}"
     "kubernetes.io/cluster/${var.cluster_name}" = "shared"
     "kubernetes.io/role/elb"                  = "1"
   }
@@ -35,33 +35,49 @@ resource "aws_subnet" "public_subnet" {
 
 # Private Subnets (used for EKS nodegroups and internal ELBs)
 resource "aws_subnet" "private_subnet" {
-  for_each = { for idx, cidr in var.private_subnet_cidr : idx => cidr }
+  for_each = { for idx, cidr in var.private_subnet_cidrs : idx => cidr }
 
   vpc_id            = aws_vpc.vpc.id
   cidr_block        = each.value
   availability_zone = element(var.availability_zones, each.key)
 
   tags = {
-    Name                                      = "${var.ResourcePrefix}-Private-Subnet-${each.key + 1}"
+    Name                                      = "${var.resource_prefix}-private-subnet-${each.key + 1}"
     "kubernetes.io/cluster/${var.cluster_name}" = "shared"
     "kubernetes.io/role/internal-elb"         = "1"
   }
 }
 
-# Route Table for Public Subnets
-resource "aws_route_table" "PublicRT" {
-  vpc_id = aws_vpc.vpc.id
-  route {
-    cidr_block = var.PublicRT_cidr
-    gateway_id = aws_internet_gateway.igw.id
+
+resource "aws_subnet" "private_db_subnet" {
+  for_each = { for idx, cidr in var.private_db_subnet_cidrs : idx => cidr }
+
+  vpc_id            = aws_vpc.vpc.id
+  cidr_block        = each.value
+  availability_zone = element(var.availability_zones, each.key)
+
+  tags = {
+    Name                                      = "${var.resource_prefix}-private-subnet-${each.key + 1}"
+    "kubernetes.io/cluster/${var.cluster_name}" = "shared"
+    "kubernetes.io/role/internal-elb"         = "1"
   }
-  tags = { Name = "${var.ResourcePrefix}-Public-RT" }
 }
 
-resource "aws_route_table_association" "PublicSubnetAssoc" {
+
+# Route Table for Public Subnets
+resource "aws_route_table" "public_rt" {
+  vpc_id = aws_vpc.vpc.id
+  route {
+    cidr_block = var.public_rt_cidr
+    gateway_id = aws_internet_gateway.igw.id
+  }
+  tags = { Name = "${var.resource_prefix}-public-rt" }
+}
+
+resource "aws_route_table_association" "public_subnet_assoc" {
   for_each = aws_subnet.public_subnet
   subnet_id      = each.value.id
-  route_table_id = aws_route_table.PublicRT.id 
+  route_table_id = aws_route_table.public_rt.id 
 }
 
 # Route Table for Private Subnets and NAT Gateway to allow internet access
@@ -71,7 +87,7 @@ resource "aws_eip" "eip" {
   count                     = var.enable_nat_gateway ? 1 : 0
   
   tags = {
-    Name = "${var.ResourcePrefix}-eip"
+    Name = "${var.resource_prefix}-eip"
   }
 }
 
@@ -81,31 +97,31 @@ resource "aws_nat_gateway" "ngw" {
   allocation_id = aws_eip.eip[0].id
   subnet_id     = aws_subnet.public_subnet[0].id
   tags = {
-    Name = "${var.ResourcePrefix}-ngw"
+    Name = "${var.resource_prefix}-ngw"
   }
 }
 
-resource "aws_route_table" "PrivateRT" {
+resource "aws_route_table" "private_rt" {
   vpc_id = aws_vpc.vpc.id
 
   dynamic "route" {
     for_each = var.enable_nat_gateway ? [1] : []
     content {
-      cidr_block     = var.PrivateRT_cidr
+      cidr_block     = var.private_rt_cidr
       nat_gateway_id = aws_nat_gateway.ngw[0].id
     }
   }
 
   tags = {
-    Name = "${var.ResourcePrefix}-Private-RT"
+    Name = "${var.resource_prefix}-private-rt"
   }
 }
 
  
-resource "aws_route_table_association" "PrivateSubnetAssoc" {
+resource "aws_route_table_association" "private_subnet_assoc" {
   for_each = aws_subnet.private_subnet
   subnet_id      = each.value.id
-  route_table_id = aws_route_table.PrivateRT.id 
+  route_table_id = aws_route_table.private_rt.id 
 }
 
 

@@ -1,4 +1,4 @@
-variable "ResourcePrefix" {
+variable "resource_prefix" {
   description = "Prefix for resource names"
   type        = string
 }
@@ -28,13 +28,18 @@ variable "instance_tenancy" {
   type        = string
 }
 
-variable "public_subnet_cidr" {
+variable "public_subnet_cidrs" {
   description = "List of CIDR blocks for public subnets"
   type        = list(string)
 }
 
-variable "private_subnet_cidr" {
+variable "private_subnet_cidrs" {
   description = "List of CIDR blocks for private subnets"
+  type        = list(string)
+}
+
+variable "private_db_subnet_cidrs" {
+  description = "List of CIDR blocks for private DB subnets"
   type        = list(string)
 }
 
@@ -43,12 +48,12 @@ variable "public_ip_on_launch" {
   type        = bool
 }
 
-variable "PublicRT_cidr" {
+variable "public_rt_cidr" {
   description = "CIDR block for the public route table"
   type        = string
 }
 
-variable "PrivateRT_cidr" {
+variable "private_rt_cidr" {
   description = "CIDR block for the private route table"
   type        = string
   

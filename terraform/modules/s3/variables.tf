@@ -4,7 +4,7 @@ variable "tags" {
   default     = {}
 }
 
-variable "ResourcePrefix" {
+variable "resource_prefix" {
   description = "Prefix to be used for naming resources"
   type        = string
 }
